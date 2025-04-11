@@ -31,7 +31,7 @@ export default function InvoicesPage() {
     formData.append('file', file);
     
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/aws/upload`, {
+      const response = await fetch('/api/upload', {
         method: 'POST',
         body: formData,
       });
