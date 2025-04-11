@@ -1,0 +1,85 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  email         String    @unique
+  password      String
+  name          String?
+  role          Role      @default(USER)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  accounts      Account[]
+  transactions  Transaction[]
+  invoices      Invoice[]
+}
+
+model Account {
+  id            String        @id @default(auto()) @map("_id") @db.ObjectId
+  name          String
+  type          AccountType
+  balance       Float         @default(0)
+  userId        String        @db.ObjectId
+  user          User          @relation(fields: [userId], references: [id])
+  transactions  Transaction[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+model Transaction {
+  id            String        @id @default(auto()) @map("_id") @db.ObjectId
+  amount        Float
+  type          TransactionType
+  description   String?
+  date          DateTime
+  accountId     String        @db.ObjectId
+  account       Account       @relation(fields: [accountId], references: [id])
+  userId        String        @db.ObjectId
+  user          User          @relation(fields: [userId], references: [id])
+  invoiceId     String?       @db.ObjectId @unique
+  invoice       Invoice?      @relation(fields: [invoiceId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+model Invoice {
+  id            String        @id @default(auto()) @map("_id") @db.ObjectId
+  fileName      String
+  fileUrl       String
+  fileKey       String        @unique
+  amount        Float
+  date          DateTime
+  vendor        String?
+  userId        String        @db.ObjectId
+  user          User          @relation(fields: [userId], references: [id])
+  transaction   Transaction?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+enum AccountType {
+  BANK
+  CREDIT_CARD
+  DEBIT_CARD
+  CASH
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+  TRANSFER
+} 
