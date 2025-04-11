@@ -7,6 +7,7 @@ import { AccountsModule } from './accounts/accounts.module';
 import { TransactionsModule } from './transactions/transactions.module';
 import { InvoicesModule } from './invoices/invoices.module';
 import { AwsModule } from './aws/aws.module';
+import { AppController } from './app.controller';
 
 @Module({
   imports: [
@@ -21,5 +22,6 @@ import { AwsModule } from './aws/aws.module';
     InvoicesModule,
     AwsModule,
   ],
+  controllers: [AppController],
 })
 export class AppModule {} 
