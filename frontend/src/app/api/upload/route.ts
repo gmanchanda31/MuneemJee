@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '../auth/[...nextauth]/route';
+import { getCollection } from '@/lib/mongodb';
 
 // Initialize S3 client
 const s3Client = new S3Client({
@@ -29,8 +32,18 @@ async function getSignedUrlForObject(key: string, expiresIn = 3600): Promise<str
 
 export async function POST(request: NextRequest) {
   try {
+    const session = await getServerSession(authOptions);
+    
+    if (!session || !session.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const userId = session.user.id;
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
+    const amount = formData.get('amount') as string | null;
+    const vendor = formData.get('vendor') as string | null;
+    const date = formData.get('date') as string | null;
 
     if (!file) {
       return NextResponse.json(
@@ -39,9 +52,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // For testing, we'll use a test user ID
-    const testUserId = 'test-user-123';
-    const key = generateKey(file.name, testUserId);
+    const key = generateKey(file.name, userId);
     
     // Convert file to ArrayBuffer
     const fileBuffer = await file.arrayBuffer();
@@ -53,7 +64,7 @@ export async function POST(request: NextRequest) {
       ContentType: file.type,
       Metadata: {
         originalName: file.name,
-        uploadedBy: testUserId,
+        uploadedBy: userId,
         uploadedAt: new Date().toISOString(),
       },
     });
@@ -62,6 +73,33 @@ export async function POST(request: NextRequest) {
     
     // Get a signed URL for immediate access
     const url = await getSignedUrlForObject(key);
+    
+    // Create invoice record if amount is provided
+    if (amount) {
+      const invoicesCollection = await getCollection('invoices');
+      const invoiceData = {
+        fileName: file.name,
+        fileUrl: url,
+        fileKey: key,
+        amount: parseFloat(amount),
+        vendor: vendor || 'Unknown',
+        date: date ? new Date(date) : new Date(),
+        userId,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      
+      const result = await invoicesCollection.insertOne(invoiceData);
+      
+      return NextResponse.json({
+        key,
+        url,
+        invoice: {
+          id: result.insertedId,
+          ...invoiceData
+        }
+      }, { status: 200 });
+    }
     
     return NextResponse.json({ key, url }, { status: 200 });
   } catch (error: any) {

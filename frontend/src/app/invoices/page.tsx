@@ -1,13 +1,52 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
+
+interface Invoice {
+  id: string;
+  fileName: string;
+  fileUrl: string;
+  fileKey: string;
+  amount: number;
+  date: string;
+  vendor?: string;
+}
 
 export default function InvoicesPage() {
   const [file, setFile] = useState<File | null>(null);
+  const [amount, setAmount] = useState<string>('');
+  const [vendor, setVendor] = useState<string>('');
+  const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    // Fetch invoices when component mounts
+    fetchInvoices();
+  }, []);
+
+  const fetchInvoices = async () => {
+    try {
+      setIsLoading(true);
+      const response = await fetch('/api/invoices');
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch invoices: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      setInvoices(data);
+    } catch (err: any) {
+      console.error('Error fetching invoices:', err);
+      setError(err.message || 'Failed to fetch invoices');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0] || null;
@@ -30,6 +69,13 @@ export default function InvoicesPage() {
     const formData = new FormData();
     formData.append('file', file);
     
+    // Add invoice details if provided
+    if (amount) {
+      formData.append('amount', amount);
+      formData.append('vendor', vendor);
+      formData.append('date', date);
+    }
+    
     try {
       const response = await fetch('/api/upload', {
         method: 'POST',
@@ -42,11 +88,29 @@ export default function InvoicesPage() {
       
       const result = await response.json();
       setUploadResult(result);
+      
+      // If we created an invoice, refresh the invoice list
+      if (result.invoice) {
+        fetchInvoices();
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to upload file');
     } finally {
       setIsUploading(false);
     }
+  };
+
+  // Format currency
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+    }).format(amount);
+  };
+
+  // Format date
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString();
   };
 
   return (
@@ -70,6 +134,46 @@ export default function InvoicesPage() {
                     accept=".pdf,.jpg,.jpeg,.png"
                   />
                 </div>
+                
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Invoice Amount (optional)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    placeholder="0.00"
+                    className="w-full p-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+                
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Vendor (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={vendor}
+                    onChange={(e) => setVendor(e.target.value)}
+                    placeholder="Vendor name"
+                    className="w-full p-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+                
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Date (optional)
+                  </label>
+                  <input
+                    type="date"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    className="w-full p-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+                
                 <button
                   type="submit"
                   disabled={isUploading || !file}
@@ -129,9 +233,45 @@ export default function InvoicesPage() {
           <div className="mt-8">
             <h2 className="text-lg font-medium mb-4">Recent Invoices</h2>
             <div className="bg-white overflow-hidden shadow rounded-lg">
-              <div className="px-4 py-5 sm:p-6">
-                <p className="text-center text-gray-500 py-8">No invoices found. Upload your first invoice to get started.</p>
-              </div>
+              {isLoading ? (
+                <div className="px-4 py-5 sm:p-6">
+                  <p className="text-center text-gray-500 py-8">Loading invoices...</p>
+                </div>
+              ) : invoices.length === 0 ? (
+                <div className="px-4 py-5 sm:p-6">
+                  <p className="text-center text-gray-500 py-8">No invoices found. Upload your first invoice to get started.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vendor</th>
+                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">File</th>
+                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {invoices.map((invoice) => (
+                        <tr key={invoice.id}>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatDate(invoice.date)}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{invoice.vendor || 'Unknown'}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatCurrency(invoice.amount)}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600 hover:text-blue-800">
+                            <a href={invoice.fileUrl} target="_blank" rel="noopener noreferrer">{invoice.fileName}</a>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            <button className="text-indigo-600 hover:text-indigo-900 mr-2">View</button>
+                            <button className="text-green-600 hover:text-green-900">Record Transaction</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         </div>
